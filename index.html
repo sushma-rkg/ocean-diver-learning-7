@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ocean Diver</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #06324d; }
+  canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let W, H;
+function resize() { W = canvas.width = innerWidth; H = canvas.height = innerHeight; }
+addEventListener('resize', resize);
+resize();
+
+const diver = { x: W / 2, y: H / 2, angle: 0, flip: 1, t: 0 };
+const target = { x: W / 2, y: H / 2 };
+const bubbles = [];
+
+function aim(e) {
+  const p = e.touches ? e.touches[0] : e;
+  target.x = p.clientX;
+  target.y = p.clientY;
+}
+addEventListener('mousemove', aim);
+addEventListener('touchstart', aim, { passive: true });
+addEventListener('touchmove', aim, { passive: true });
+
+function drawDiver() {
+  const kick = Math.sin(diver.t * 8) * 0.4;
+  ctx.save();
+  ctx.translate(diver.x, diver.y);
+  ctx.scale(diver.flip, 1);
+  ctx.rotate(diver.angle);
+  // legs + fins
+  ctx.strokeStyle = '#1b2a41'; ctx.lineWidth = 7; ctx.lineCap = 'round';
+  for (const s of [-1, 1]) {
+    ctx.beginPath(); ctx.moveTo(-14, 0); ctx.lineTo(-34, s * 6 + kick * s * 10); ctx.stroke();
+    ctx.fillStyle = '#ffb703';
+    ctx.beginPath(); ctx.ellipse(-40, s * 6 + kick * s * 12, 8, 4, 0, 0, 7); ctx.fill();
+  }
+  // air tank
+  ctx.fillStyle = '#9aa5b1';
+  ctx.beginPath(); ctx.ellipse(-4, -10, 14, 6, 0, 0, 7); ctx.fill();
+  // body
+  ctx.fillStyle = '#1b2a41';
+  ctx.beginPath(); ctx.ellipse(0, 0, 20, 10, 0, 0, 7); ctx.fill();
+  // head + mask
+  ctx.fillStyle = '#f1c27d';
+  ctx.beginPath(); ctx.arc(20, 0, 8, 0, 7); ctx.fill();
+  ctx.fillStyle = '#bdeaff';
+  ctx.beginPath(); ctx.ellipse(24, -1, 5, 4, 0, 0, 7); ctx.fill();
+  ctx.strokeStyle = '#ffb703'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.ellipse(24, -1, 5, 4, 0, 0, 7); ctx.stroke();
+  ctx.restore();
+}
+
+const fish = { x: -40, y: H * 0.3, dir: 1, t: 0 };
+
+function drawFish() {
+  ctx.save();
+  ctx.translate(fish.x, fish.y + Math.sin(fish.t * 2) * 12);
+  ctx.scale(fish.dir, 1);
+  const wag = Math.sin(fish.t * 10) * 4;
+  ctx.fillStyle = '#ff7b39';
+  ctx.beginPath(); ctx.ellipse(0, 0, 18, 10, 0, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(-14, 0); ctx.lineTo(-28, -9 + wag); ctx.lineTo(-28, 9 + wag); ctx.fill();
+  ctx.fillStyle = '#fff';
+  ctx.beginPath(); ctx.arc(9, -3, 3, 0, 7); ctx.fill();
+  ctx.fillStyle = '#000';
+  ctx.beginPath(); ctx.arc(10, -3, 1.5, 0, 7); ctx.fill();
+  ctx.restore();
+}
+
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min((now - last) / 1000, 0.05);
+  last = now;
+  diver.t += dt;
+
+  // water
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, '#2a9fd6'); g.addColorStop(1, '#06324d');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  // sand
+  ctx.fillStyle = '#c9a66b';
+  ctx.beginPath(); ctx.moveTo(0, H);
+  for (let x = 0; x <= W; x += 20) ctx.lineTo(x, H - 30 + Math.sin(x * 0.02) * 8);
+  ctx.lineTo(W, H); ctx.fill();
+
+  // swim toward pointer
+  const dx = target.x - diver.x, dy = target.y - diver.y;
+  const dist = Math.hypot(dx, dy);
+  if (dist > 6) {
+    const speed = Math.min(dist * 2, 220) * dt;
+    diver.x += dx / dist * speed;
+    diver.y += dy / dist * speed;
+    if (Math.abs(dx) > 4) diver.flip = dx > 0 ? 1 : -1;
+    const want = Math.atan2(dy, Math.abs(dx)) * 0.7;
+    diver.angle += (want - diver.angle) * 0.1;
+  } else {
+    diver.angle *= 0.9;
+  }
+
+  // bubbles from his mask
+  if (Math.random() < dt * 8) {
+    bubbles.push({
+      x: diver.x + diver.flip * 26 + (Math.random() - 0.5) * 6,
+      y: diver.y - 6,
+      r: 2 + Math.random() * 4,
+      vx: (Math.random() - 0.5) * 10,
+      life: 1
+    });
+  }
+  for (let i = bubbles.length - 1; i >= 0; i--) {
+    const b = bubbles[i];
+    b.y -= (30 + b.r * 8) * dt;
+    b.x += b.vx * dt + Math.sin(b.y * 0.05) * 0.3;
+    b.life -= dt * 0.2;
+    if (b.life <= 0 || b.y < -10) { bubbles.splice(i, 1); continue; }
+    ctx.globalAlpha = Math.min(b.life, 1) * 0.8;
+    ctx.strokeStyle = '#e8f8ff'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, 7); ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+
+  // fish swims across and turns around at the edges
+  fish.t += dt;
+  fish.x += fish.dir * 60 * dt;
+  if (fish.x > W + 40) fish.dir = -1;
+  if (fish.x < -40) fish.dir = 1;
+  drawFish();
+
+  drawDiver();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
